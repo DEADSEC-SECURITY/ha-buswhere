@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BusWhere Shuttle Tracker",
+        "description": "Enter the BusWhere route URL from your browser.\n\nExample: https://buswhere.com/theory/routes/theory_shuttle",
+        "data": {
+          "route_url": "Route URL",
+          "scan_interval": "Update interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Invalid URL format. Expected: https://buswhere.com/{org}/routes/{route_id}",
+      "cannot_connect": "Could not connect to BusWhere. Check the URL and try again.",
+      "no_data": "No shuttle data found at this URL."
+    },
+    "abort": {
+      "already_configured": "This route is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Rename Shuttle Stops",
+        "description": "Customize the name for each stop. Leave blank to use the default address.\n\n{stop_info}"
+      }
+    }
+  }
+}
