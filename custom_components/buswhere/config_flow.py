@@ -20,6 +20,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    BASE_URL,
     CONF_ORG,
     CONF_ROUTE_ID,
     CONF_ROUTE_URL,
@@ -29,6 +30,7 @@ from .const import (
     DOMAIN,
     USER_AGENT,
 )
+from .coordinator import BusWhereCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +43,14 @@ class BusWhereConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for BusWhere."""
 
     VERSION = 1
+
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        super().__init__()
+        self._org: str = ""
+        self._route_id: str = ""
+        self._scan_interval: int = DEFAULT_SCAN_INTERVAL
+        self._stops: list[dict[str, Any]] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -57,26 +67,20 @@ class BusWhereConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 org = match.group(1)
                 route_id = match.group(2)
 
-                # Check for duplicates
                 await self.async_set_unique_id(f"{org}_{route_id}")
                 self._abort_if_unique_id_configured()
 
-                # Validate by fetching the page
-                if await self._validate_route(org, route_id):
-                    scan_interval = user_input.get(
-                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                    )
-                    title = f"BusWhere {route_id.replace('_', ' ').title()}"
-                    return self.async_create_entry(
-                        title=title,
-                        data={
-                            CONF_ORG: org,
-                            CONF_ROUTE_ID: route_id,
-                            CONF_SCAN_INTERVAL: scan_interval,
-                        },
-                    )
-                else:
+                stops = await self._validate_and_fetch(org, route_id)
+                if stops is None:
                     errors["base"] = "cannot_connect"
+                else:
+                    self._org = org
+                    self._route_id = route_id
+                    self._scan_interval = int(
+                        user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+                    )
+                    self._stops = stops
+                    return await self.async_step_stops()
 
         return self.async_show_form(
             step_id="user",
@@ -99,29 +103,72 @@ class BusWhereConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_stops(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle the stop naming step — optionally rename each stop."""
+        if not self._stops:
+            # No stops available; skip straight to creating the entry
+            return self._create_entry({})
+
+        if user_input is not None:
+            stop_names: dict[str, str] = {}
+            for key, value in user_input.items():
+                if key.startswith("stop_order_") and value:
+                    order = key[len("stop_order_"):]
+                    stop_names[order] = value.strip()
+            return self._create_entry(stop_names)
+
+        schema_dict: dict[Any, Any] = {}
+        for stop in sorted(self._stops, key=lambda s: s.get("order", 0)):
+            order = str(stop.get("order", stop["id"]))
+            default_name = stop.get("address") or f"Stop {order}"
+            schema_dict[
+                vol.Optional(
+                    f"stop_order_{order}",
+                    description={"suggested_value": default_name},
+                )
+            ] = TextSelector(TextSelectorConfig())
+
+        return self.async_show_form(
+            step_id="stops",
+            data_schema=vol.Schema(schema_dict),
+            description_placeholders={
+                "stop_count": str(len(self._stops)),
+            },
+        )
+
+    def _create_entry(self, stop_names: dict[str, str]) -> FlowResult:
+        """Create the config entry with optional initial stop names."""
+        title = f"BusWhere {self._route_id.replace('_', ' ').title()}"
+        return self.async_create_entry(
+            title=title,
+            data={
+                CONF_ORG: self._org,
+                CONF_ROUTE_ID: self._route_id,
+                CONF_SCAN_INTERVAL: self._scan_interval,
+            },
+            options={CONF_STOP_NAMES: stop_names},
+        )
+
     @staticmethod
-    async def _validate_route(org: str, route_id: str) -> bool:
-        """Validate that we can fetch data from the route."""
-        url = f"https://buswhere.com/{org}/routes/{route_id}"
-        headers = {
-            "User-Agent": USER_AGENT,
-            "X-Requested-With": "XMLHttpRequest",
-            "Accept": "application/json",
-        }
+    async def _validate_and_fetch(
+        org: str, route_id: str
+    ) -> list[dict[str, Any]] | None:
+        """Fetch the route page and return the stops list, or None on failure."""
+        url = f"{BASE_URL}/{org}/routes/{route_id}"
+        headers = {"User-Agent": USER_AGENT}
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers=headers,
-                    params={"t": "0", "initial": "true", "filter": ""},
-                ) as resp:
+                async with session.get(url, headers=headers) as resp:
                     if resp.status != 200:
-                        return False
-                    data = await resp.json()
-                    return "current" in data
+                        return None
+                    html = await resp.text()
+            data = BusWhereCoordinator._parse_maps_data(html)
+            return data.get("stops", [])
         except Exception:
-            _LOGGER.exception("Error validating BusWhere route")
-            return False
+            _LOGGER.exception("Error fetching BusWhere route data during setup")
+            return None
 
     @staticmethod
     @callback
@@ -145,7 +192,6 @@ class BusWhereOptionsFlow(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Show form with current stop names for editing."""
         if user_input is not None:
-            # Extract stop names from the flat form keys (stop_order_<N>)
             stop_names: dict[str, str] = {}
             for key, value in user_input.items():
                 if key.startswith("stop_order_") and value:
@@ -166,10 +212,8 @@ class BusWhereOptionsFlow(config_entries.OptionsFlow):
         if coordinator and coordinator.data:
             stops = coordinator.data.get("stops", [])
 
-        # Get existing custom names (keyed by order)
         existing_names = self._config_entry.options.get(CONF_STOP_NAMES, {})
 
-        # Build schema with one text field per stop, keyed by order
         schema_dict: dict[Any, Any] = {}
         for stop in sorted(stops, key=lambda s: s.get("order", 0)):
             order = str(stop.get("order", stop["id"]))

@@ -8,6 +8,10 @@
           "route_url": "Route URL",
           "scan_interval": "Update interval (seconds)"
         }
+      },
+      "stops": {
+        "title": "Name Your Bus Stops",
+        "description": "Optionally rename each stop. Leave a field blank to keep the default address from BusWhere."
       }
     },
     "error": {
