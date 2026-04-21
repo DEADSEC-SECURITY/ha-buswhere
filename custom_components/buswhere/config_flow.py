@@ -145,12 +145,12 @@ class BusWhereOptionsFlow(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Show form with current stop names for editing."""
         if user_input is not None:
-            # Extract stop names from the flat form keys (stop_name_<id>)
+            # Extract stop names from the flat form keys (stop_order_<N>)
             stop_names: dict[str, str] = {}
             for key, value in user_input.items():
-                if key.startswith("stop_name_") and value:
-                    stop_id = key[len("stop_name_"):]
-                    stop_names[stop_id] = value.strip()
+                if key.startswith("stop_order_") and value:
+                    order = key[len("stop_order_"):]
+                    stop_names[order] = value.strip()
 
             return self.async_create_entry(
                 title="",
@@ -166,26 +166,24 @@ class BusWhereOptionsFlow(config_entries.OptionsFlow):
         if coordinator and coordinator.data:
             stops = coordinator.data.get("stops", [])
 
-        # Get existing custom names
+        # Get existing custom names (keyed by order)
         existing_names = self._config_entry.options.get(CONF_STOP_NAMES, {})
 
-        # Build schema with one text field per stop
+        # Build schema with one text field per stop, keyed by order
         schema_dict: dict[Any, Any] = {}
         for stop in sorted(stops, key=lambda s: s.get("order", 0)):
-            stop_id = str(stop["id"])
-            default_name = stop.get("address") or f"Stop {stop.get('order', '?')}"
-            current_name = existing_names.get(stop_id, default_name)
-            order = stop.get("order", "?")
+            order = str(stop.get("order", stop["id"]))
+            default_name = stop.get("address") or f"Stop {order}"
+            current_name = existing_names.get(order, default_name)
 
             schema_dict[
                 vol.Optional(
-                    f"stop_name_{stop_id}",
+                    f"stop_order_{order}",
                     description={"suggested_value": current_name},
                 )
             ] = TextSelector(TextSelectorConfig())
 
         if not schema_dict:
-            # No stops available yet — show a message
             schema_dict[
                 vol.Optional("_no_stops")
             ] = TextSelector(TextSelectorConfig())

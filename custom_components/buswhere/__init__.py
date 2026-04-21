@@ -103,9 +103,9 @@ async def _create_stop_zones(
 
     created_ids = []
     for stop in stops:
-        stop_id_str = str(stop["id"])
-        # Use custom name if set, otherwise fall back to address
-        display_name = custom_names.get(stop_id_str) or stop.get("address") or f"Stop {stop.get('order', '?')}"
+        order = str(stop.get("order", stop["id"]))
+        # Use custom name if set (keyed by order), otherwise fall back to address
+        display_name = custom_names.get(order) or stop.get("address") or f"Stop {order}"
         slug_name = _slugify(f"buswhere_{route_id}_{display_name}")
 
         # Check if zone already exists

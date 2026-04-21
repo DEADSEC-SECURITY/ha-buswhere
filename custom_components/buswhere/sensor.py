@@ -24,8 +24,6 @@ async def async_setup_entry(
 ) -> None:
     """Set up BusWhere sensors."""
     coordinator: BusWhereCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-    org = entry.data[CONF_ORG]
-    route_id = entry.data[CONF_ROUTE_ID]
 
     entities: list[SensorEntity] = [
         BusWhereStatusSensor(coordinator, entry),
@@ -118,24 +116,32 @@ class BusWhereStopEtaSensor(CoordinatorEntity[BusWhereCoordinator], SensorEntity
         super().__init__(coordinator)
         org = entry.data[CONF_ORG]
         route_id = entry.data[CONF_ROUTE_ID]
+        self._entry = entry
         self._stop_id = stop["id"]
         self._stop_order = stop.get("order", 0)
-        # Use custom name if configured
-        custom_names = entry.options.get(CONF_STOP_NAMES, {})
-        custom_name = custom_names.get(str(self._stop_id))
-        if custom_name:
-            self._attr_name = f"{custom_name} ETA"
-        else:
-            self._attr_name = f"Stop {self._stop_order} ETA"
-        self._attr_unique_id = f"{org}_{route_id}_stop_{self._stop_id}_eta"
+        # Unique ID keyed by order (stable), not by id (can change per session)
+        self._attr_unique_id = f"{org}_{route_id}_stop_{self._stop_order}_eta"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"{org}_{route_id}")},
         }
+
+    @property
+    def name(self) -> str:
+        """Return the entity name, dynamically reading custom names from options."""
+        custom_names = self._entry.options.get(CONF_STOP_NAMES, {})
+        custom_name = custom_names.get(str(self._stop_order))
+        if custom_name:
+            return f"{custom_name} ETA"
+        return f"Stop {self._stop_order} ETA"
 
     def _find_stop(self) -> dict[str, Any] | None:
         """Find this stop in the current coordinator data."""
         if not self.coordinator.data:
             return None
+        # Match by order (stable) first, fall back to id
+        for stop in self.coordinator.data.get("stops", []):
+            if stop.get("order") == self._stop_order:
+                return stop
         for stop in self.coordinator.data.get("stops", []):
             if stop["id"] == self._stop_id:
                 return stop
