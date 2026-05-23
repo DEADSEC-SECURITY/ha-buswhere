@@ -8,8 +8,10 @@ CONF_ROUTE_ID = "route_id"
 CONF_SCAN_INTERVAL = "scan_interval"
 
 CONF_STOP_NAMES = "stop_names"
+CONF_ZONE_RADIUS = "zone_radius"
 
 DEFAULT_SCAN_INTERVAL = 30  # seconds
+DEFAULT_ZONE_RADIUS = 80  # meters — matches BusWhere's stop_threshold (~79m)
 FULL_REFRESH_INTERVAL = 300  # 5 minutes — re-fetch HTML for stop ETAs
 
 BASE_URL = "https://buswhere.com"

@@ -10,7 +10,16 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from .const import CONF_ORG, CONF_ROUTE_ID, CONF_SCAN_INTERVAL, CONF_STOP_NAMES, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import (
+    CONF_ORG,
+    CONF_ROUTE_ID,
+    CONF_SCAN_INTERVAL,
+    CONF_STOP_NAMES,
+    CONF_ZONE_RADIUS,
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_ZONE_RADIUS,
+    DOMAIN,
+)
 from .coordinator import BusWhereCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -20,9 +29,6 @@ PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
 ]
-
-DEFAULT_ZONE_RADIUS = 80  # meters — matches BusWhere's stop_threshold (~79m)
-
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up BusWhere from a config entry."""
@@ -94,6 +100,7 @@ async def _create_stop_zones(
 
     route_id = entry.data[CONF_ROUTE_ID]
     custom_names = entry.options.get(CONF_STOP_NAMES, {})
+    zone_radius = entry.options.get(CONF_ZONE_RADIUS, DEFAULT_ZONE_RADIUS)
     prefix = _route_zone_prefix(route_id)
 
     storage_collection = hass.data.get(zone.DOMAIN)
@@ -113,7 +120,7 @@ async def _create_stop_zones(
             "name": slug_name,
             "latitude": stop["lat"],
             "longitude": stop["lon"],
-            "radius": float(stop.get("stop_threshold", DEFAULT_ZONE_RADIUS)),
+            "radius": float(zone_radius),
             "icon": "mdi:bus-stop",
             "passive": False,
         }

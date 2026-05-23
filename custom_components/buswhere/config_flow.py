@@ -26,7 +26,9 @@ from .const import (
     CONF_ROUTE_URL,
     CONF_SCAN_INTERVAL,
     CONF_STOP_NAMES,
+    CONF_ZONE_RADIUS,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_ZONE_RADIUS,
     DOMAIN,
     USER_AGENT,
 )
@@ -190,8 +192,11 @@ class BusWhereOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Show form with current stop names for editing."""
+        """Show form with zone radius and current stop names for editing."""
         if user_input is not None:
+            zone_radius = int(
+                user_input.get(CONF_ZONE_RADIUS, DEFAULT_ZONE_RADIUS)
+            )
             stop_names: dict[str, str] = {}
             for key, value in user_input.items():
                 if key.startswith("stop_order_") and value:
@@ -200,7 +205,10 @@ class BusWhereOptionsFlow(config_entries.OptionsFlow):
 
             return self.async_create_entry(
                 title="",
-                data={CONF_STOP_NAMES: stop_names},
+                data={
+                    CONF_STOP_NAMES: stop_names,
+                    CONF_ZONE_RADIUS: zone_radius,
+                },
             )
 
         # Get stops from the coordinator
@@ -213,8 +221,27 @@ class BusWhereOptionsFlow(config_entries.OptionsFlow):
             stops = coordinator.data.get("stops", [])
 
         existing_names = self._config_entry.options.get(CONF_STOP_NAMES, {})
+        current_radius = self._config_entry.options.get(
+            CONF_ZONE_RADIUS, DEFAULT_ZONE_RADIUS
+        )
 
         schema_dict: dict[Any, Any] = {}
+
+        schema_dict[
+            vol.Optional(
+                CONF_ZONE_RADIUS,
+                default=current_radius,
+            )
+        ] = NumberSelector(
+            NumberSelectorConfig(
+                min=10,
+                max=500,
+                step=5,
+                unit_of_measurement="meters",
+                mode=NumberSelectorMode.BOX,
+            )
+        )
+
         for stop in sorted(stops, key=lambda s: s.get("order", 0)):
             order = str(stop.get("order", stop["id"]))
             default_name = stop.get("address") or f"Stop {order}"
@@ -227,7 +254,7 @@ class BusWhereOptionsFlow(config_entries.OptionsFlow):
                 )
             ] = TextSelector(TextSelectorConfig())
 
-        if not schema_dict:
+        if len(schema_dict) == 1:
             schema_dict[
                 vol.Optional("_no_stops")
             ] = TextSelector(TextSelectorConfig())

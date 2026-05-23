@@ -26,8 +26,11 @@
   "options": {
     "step": {
       "init": {
-        "title": "Rename Shuttle Stops",
-        "description": "Customize the name for each stop. Leave blank to use the default address.\n\n{stop_info}"
+        "title": "BusWhere Settings",
+        "description": "Configure zone radius and stop names.\n\n{stop_info}",
+        "data": {
+          "zone_radius": "Stop zone radius (meters)"
+        }
       }
     }
   }
